@@ -1,0 +1,128 @@
+<div class="game-container">
+  <h1 class="title">🐱 Поймай кота!</h1>
+  <h1 class="title">Курсовая работа Ильичев И.Д</h1>
+  
+  <div class="game-info">
+    <div class="score" style="display: none;">Счет: <span id="score"><%= @score %></span></div>
+    <div class="moves" style="display: none;">Ход: <span id="moves"><%= @moves %></span></div>
+    <div class="message" id="message" style="display: none;"></div>
+    <button onclick="newGame()" class="btn-new">Новая игра</button>
+  </div>
+  
+  <div class="game-board" id="game-board">
+    <%= for y <- 0..(@grid_size-1) do %>
+      <div class="row">
+        <%= for x <- 0..(@grid_size-1) do %>
+          <div class="cell" 
+               data-x={x}
+               data-y={y} 
+               onclick="makeMove(this)"
+               id={"cell-#{x}-#{y}"}>
+            <%= cond do %>
+              <% {x, y} == @cat_position -> %>
+                <div class="cat">🐱</div>
+              <% MapSet.member?(@blocks, {x, y}) -> %>
+                <div class="block">⬛</div>
+              <% true -> %>
+                <div class="empty"></div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+</div>
+
+<script>
+  // Сохраняем ID игры
+  const gameId = "<%= @game_id %>";
+  let gameOver = <%= @game_over %>;
+  
+  function makeMove(cell) {
+    if (gameOver) return;
+    
+    const x = cell.getAttribute('data-x');
+    const y = cell.getAttribute('data-y');
+    
+    // Блокируем кнопку на время запроса
+    cell.style.pointerEvents = 'none';
+    
+    // Отправляем запрос на сервер
+    fetch('/move', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+      },
+      body: JSON.stringify({
+        game_id: gameId,
+        x: x,
+        y: y
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        updateGame(data);
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+      // Разблокируем кнопку
+      cell.style.pointerEvents = 'auto';
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Ошибка соединения');
+      cell.style.pointerEvents = 'auto';
+    });
+  }
+  
+  function updateGame(data) {
+    // Обновляем счет и ходы
+    document.getElementById('score').textContent = data.score;
+    document.getElementById('moves').textContent = data.moves;
+    document.getElementById('message').textContent = data.message;
+    
+    // Обновляем gameOver из данных
+    gameOver = data.game_over;
+    
+    // Обновляем поле
+    const gridSize = <%= @grid_size %>;
+    const catPos = data.cat_position;
+    const blocks = new Set(data.blocks.map(b => `${b[0]},${b[1]}`));
+    
+    for(let y = 0; y < gridSize; y++) {
+      for(let x = 0; x < gridSize; x++) {
+        const cell = document.getElementById(`cell-${x}-${y}`);
+        const content = cell.querySelector('div');
+        
+        if(x === catPos[0] && y === catPos[1]) {
+          content.className = 'cat';
+          content.textContent = '🐱';
+        } else if(blocks.has(`${x},${y}`)) {
+          content.className = 'block';
+          content.textContent = '⬛';
+        } else {
+          content.className = 'empty';
+          content.textContent = '';
+        }
+      }
+    }
+    
+    // Если игра окончена
+    if(data.game_over) {
+      setTimeout(() => {
+        if(data.message.includes('поймали')) {
+          alert('🎉 Победа! ' + data.message);
+        } else {
+          alert('😿 ' + data.message);
+        }
+      }, 100);
+    }
+  }
+  
+  function newGame() {
+    window.location.reload();
+  }
+</script>

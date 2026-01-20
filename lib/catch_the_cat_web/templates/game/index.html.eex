@@ -1,0 +1,123 @@
+<div class="game-container">
+  <h1 class="title">🐱 Поймай кота!</h1>
+  
+  <div class="game-info">
+    <div class="score">Счет: <span id="score"><%= @score %></span></div>
+    <div class="moves">Ход: <span id="moves"><%= @moves %></span></div>
+    <div class="message" id="message"></div>
+    <button onclick="newGame()" class="btn-new">Новая игра</button>
+  </div>
+  
+  <div class="game-board" id="game-board">
+    <%= for y <- 0..(@grid_size-1) do %>
+      <div class="row">
+        <%= for x <- 0..(@grid_size-1) do %>
+          <div class="cell" 
+               data-x="<%= x %>" 
+               data-y="<%= y %>"
+               onclick="makeMove(this)"
+               id="cell-<%= x %>-<%= y %>">
+            <%= if {x, y} == @cat_position do %>
+              <div class="cat">🐱</div>
+            <% else if MapSet.member?(@blocks, {x, y}) do %>
+              <div class="block">⬛</div>
+            <% else %>
+              <div class="empty"></div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+  
+  <div class="instructions">
+    <h3>Как играть:</h3>
+    <p>1. Кликай по клеткам, чтобы ставить блоки 🧱</p>
+    <p>2. Цель: окружить кота со всех сторон</p>
+    <p>3. Кот пытается убежать к краю поля</p>
+    <p>4. Каждый ход кота уменьшает твой счет</p>
+  </div>
+</div>
+
+<script>
+  // Сохраняем ID игры
+  const gameId = "<%= @game_id %>";
+  
+  function makeMove(cell) {
+    if (<%= @game_over %>) return;
+    
+    const x = cell.getAttribute('data-x');
+    const y = cell.getAttribute('data-y');
+    
+    // Отправляем запрос на сервер
+    fetch('/move', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+      },
+      body: JSON.stringify({
+        game_id: gameId,
+        x: x,
+        y: y
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        updateGame(data);
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Ошибка соединения');
+    });
+  }
+  
+  function updateGame(data) {
+    // Обновляем счет и ходы
+    document.getElementById('score').textContent = data.score;
+    document.getElementById('moves').textContent = data.moves;
+    document.getElementById('message').textContent = data.message;
+    
+    // Обновляем поле
+    const gridSize = <%= @grid_size %>;
+    const catPos = data.cat_position;
+    const blocks = new Set(data.blocks.map(b => `${b[0]},${b[1]}`));
+    
+    for(let y = 0; y < gridSize; y++) {
+      for(let x = 0; x < gridSize; x++) {
+        const cell = document.getElementById(`cell-${x}-${y}`);
+        const content = cell.querySelector('div');
+        
+        if(x === catPos[0] && y === catPos[1]) {
+          content.className = 'cat';
+          content.textContent = '🐱';
+        } else if(blocks.has(`${x},${y}`)) {
+          content.className = 'block';
+          content.textContent = '⬛';
+        } else {
+          content.className = 'empty';
+          content.textContent = '';
+        }
+      }
+    }
+    
+    // Если игра окончена
+    if(data.game_over) {
+      setTimeout(() => {
+        if(data.message.includes('поймали')) {
+          alert('🎉 Победа! ' + data.message);
+        } else {
+          alert('😿 ' + data.message);
+        }
+      }, 100);
+    }
+  }
+  
+  function newGame() {
+    window.location.reload();
+  }
+</script>
